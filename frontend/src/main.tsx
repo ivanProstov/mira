@@ -1,0 +1,20 @@
+import "@fontsource/literata/400.css";
+import "@fontsource/literata/600.css";
+import "@fontsource/literata/700.css";
+import "@fontsource/public-sans/400.css";
+import "@fontsource/public-sans/500.css";
+import "@fontsource/public-sans/600.css";
+import "@fontsource/public-sans/700.css";
+import { createRoot } from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
+import { App } from "./App";
+import { AuthProvider } from "./auth";
+import "./styles.css";
+
+createRoot(document.getElementById("root")!).render(
+  <BrowserRouter>
+    <AuthProvider>
+      <App />
+    </AuthProvider>
+  </BrowserRouter>,
+);

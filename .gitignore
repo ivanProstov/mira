@@ -1,0 +1,12 @@
+.env
+.DS_Store
+node_modules
+dist
+__pycache__
+.pytest_cache
+.venv
+*.pyc
+backend/.data
+data
+.cursor
+*.log
