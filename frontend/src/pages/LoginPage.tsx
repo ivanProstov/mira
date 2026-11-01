@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { Wordmark } from "../ui";
@@ -46,6 +46,9 @@ export function LoginPage() {
         <button className="btn primary" type="submit" disabled={pending}>
           {pending ? "Входим…" : "Войти"}
         </button>
+        <Link className="quiet-link" to="/">
+          На главную
+        </Link>
       </form>
     </main>
   );
