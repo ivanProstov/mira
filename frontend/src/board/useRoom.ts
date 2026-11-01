@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { applyOp, roundItem } from "./model";
-import type { BoardItem, Cursor, Op, Peer, View, You } from "../types";
+import type { BoardItem, Cursor, Op, Peer, TextMark, View, You } from "../types";
 
 type Status = "connecting" | "live" | "off";
 
@@ -8,6 +8,7 @@ export function useRoom(roomId: string, displayName: string) {
   const [items, setItems] = useState<BoardItem[]>([]);
   const [peers, setPeers] = useState<Peer[]>([]);
   const [cursors, setCursors] = useState<Record<string, Cursor>>({});
+  const [textMarks, setTextMarks] = useState<TextMark[]>([]);
   const [you, setYou] = useState<You | null>(null);
   const [status, setStatus] = useState<Status>("connecting");
   const [notice, setNotice] = useState("");
@@ -27,6 +28,9 @@ export function useRoom(roomId: string, displayName: string) {
   const viewWaiting = useRef<View | null>(null);
   const cursorBuf = useRef<Record<string, Cursor | null>>({});
   const cursorFrame = useRef(0);
+  const selTimer = useRef(0);
+  const selWaiting = useRef<{ itemId: string; start: number; end: number } | null>(null);
+  const selSent = useRef("");
 
   nameRef.current = displayName;
 
@@ -129,6 +133,32 @@ export function useRoom(roomId: string, displayName: string) {
     [sendRaw],
   );
 
+  const sendTextSel = useCallback(
+    (sel: { itemId: string; start: number; end: number } | null) => {
+      if (sel === null) {
+        if (selTimer.current) window.clearTimeout(selTimer.current);
+        selTimer.current = 0;
+        selWaiting.current = null;
+        if (selSent.current === "") return;
+        selSent.current = "";
+        sendRaw({ type: "textsel", itemId: null });
+        return;
+      }
+      selWaiting.current = sel;
+      if (selTimer.current) return;
+      selTimer.current = window.setTimeout(() => {
+        selTimer.current = 0;
+        const waiting = selWaiting.current;
+        if (!waiting) return;
+        const next = `${waiting.itemId}:${waiting.start}:${waiting.end}`;
+        if (next === selSent.current) return;
+        selSent.current = next;
+        sendRaw({ type: "textsel", itemId: waiting.itemId, start: waiting.start, end: waiting.end });
+      }, 40);
+    },
+    [sendRaw],
+  );
+
   const sendViewport = useCallback(
     (view: View) => {
       viewWaiting.current = view;
@@ -158,6 +188,7 @@ export function useRoom(roomId: string, displayName: string) {
         .filter((peer) => peer.connId !== message.you.connId)
         .map((peer) => ({ ...peer, viewport: views.current[peer.connId] || peer.viewport }));
       setPeers(people);
+      setTextMarks(marksFrom(people));
       for (const [opId, op] of pending.current) sendRaw({ type: "op", opId, op });
       if (nameRef.current.trim()) sendRaw({ type: "name", name: nameRef.current.trim() });
       return;
@@ -168,6 +199,7 @@ export function useRoom(roomId: string, displayName: string) {
         .map((peer) => ({ ...peer, viewport: views.current[peer.connId] || peer.viewport }));
       setPeers(people);
       const alive = new Set(message.peers.map((peer) => peer.connId));
+      setTextMarks((prev) => prev.filter((mark) => alive.has(mark.connId)));
       setCursors((prev) => {
         const next: Record<string, Cursor> = {};
         for (const [id, cursor] of Object.entries(prev)) {
@@ -205,6 +237,25 @@ export function useRoom(roomId: string, displayName: string) {
           });
         });
       }
+      return;
+    }
+    if (message.type === "textsel") {
+      if (message.connId === youId.current) return;
+      setTextMarks((prev) => {
+        const rest = prev.filter((mark) => mark.connId !== message.connId);
+        if (!message.itemId || message.start == null || message.end == null) return rest;
+        return [
+          ...rest,
+          {
+            connId: message.connId,
+            itemId: message.itemId,
+            start: message.start,
+            end: message.end,
+            name: message.name || "",
+            color: message.color || "#1f7ad6",
+          },
+        ];
+      });
       return;
     }
     if (message.type === "viewport") {
@@ -267,6 +318,7 @@ export function useRoom(roomId: string, displayName: string) {
       window.clearTimeout(throttleTimer.current);
       window.clearTimeout(cursorTimer.current);
       window.clearTimeout(viewTimer.current);
+      window.clearTimeout(selTimer.current);
       if (cursorFrame.current) window.cancelAnimationFrame(cursorFrame.current);
       socket?.close();
       wsRef.current = null;
@@ -293,7 +345,17 @@ export function useRoom(roomId: string, displayName: string) {
     publishThrottled,
     sendCursor,
     sendViewport,
+    textMarks,
+    sendTextSel,
   };
+}
+
+function marksFrom(peers: Peer[]): TextMark[] {
+  return peers.flatMap((peer) =>
+    peer.textSel
+      ? [{ connId: peer.connId, name: peer.name, color: peer.color, ...peer.textSel }]
+      : [],
+  );
 }
 
 function roundItemCoord(value: number): number {
@@ -318,6 +380,7 @@ type Message =
       color?: string;
       role?: Peer["role"];
     }
+  | { type: "textsel"; connId: string; itemId: string | null; start?: number; end?: number; name?: string; color?: string }
   | { type: "viewport"; connId: string; x: number; y: number; zoom: number }
   | { type: "op"; opId?: string; op: Op }
   | { type: "resync"; items: BoardItem[]; message?: string }

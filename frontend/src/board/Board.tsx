@@ -53,7 +53,7 @@ type Props = {
 
 export function Board({ room, role, displayName, onRename, onRoom }: Props) {
   const roomApi = useRoom(room.id, displayName);
-  const { items, itemsRef, peers, cursors, you, status, notice, setNotice, preview, publish, publishThrottled, sendCursor, sendViewport } = roomApi;
+  const { items, itemsRef, peers, cursors, you, status, notice, setNotice, preview, publish, publishThrottled, sendCursor, sendViewport, textMarks, sendTextSel } = roomApi;
   const [view, setView] = useState<View>({ x: 90, y: 70, zoom: 1 });
   const [tool, setTool] = useState<Tool>("select");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -196,6 +196,28 @@ export function Board({ room, role, displayName, onRename, onRoom }: Props) {
   addFilesRef.current = (files, at) => {
     void addFiles(files, at);
   };
+
+  useEffect(() => {
+    const publishSelection = () => {
+      const field = document.activeElement;
+      if (!(field instanceof HTMLTextAreaElement || field instanceof HTMLInputElement)) {
+        sendTextSel(null);
+        return;
+      }
+      const host = field.closest("[data-item]") as HTMLElement | null;
+      const id = host?.dataset.item || "";
+      const item = itemsRef.current.find((entry) => entry.id === id);
+      const start = field.selectionStart ?? 0;
+      const end = field.selectionEnd ?? 0;
+      if (!item || (item.type !== "sticky" && item.type !== "text") || end <= start) {
+        sendTextSel(null);
+        return;
+      }
+      sendTextSel({ itemId: id, start, end });
+    };
+    document.addEventListener("selectionchange", publishSelection);
+    return () => document.removeEventListener("selectionchange", publishSelection);
+  }, [itemsRef, sendTextSel]);
 
   useEffect(() => {
     const move = (event: PointerEvent) => moveRef.current(event);
@@ -805,6 +827,7 @@ export function Board({ room, role, displayName, onRename, onRoom }: Props) {
         <div className="world" data-interactive={tool === "select" && !space ? "true" : "false"} style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})` }}>
           {sorted.map((item) => {
             const box = bounds(item);
+            const marks = textMarks.filter((mark) => mark.itemId === item.id);
             return (
               <div
                 key={item.id}
@@ -812,7 +835,8 @@ export function Board({ room, role, displayName, onRename, onRoom }: Props) {
                 className={`item ${selectedIds.includes(item.id) ? "selected" : ""} item-${item.type}`}
                 style={{ transform: `translate(${box.x}px, ${box.y}px)`, width: box.w, height: box.h, zIndex: item.z }}
               >
-                <ItemBody item={item} editing={editingId === item.id} onText={onText} onTextHeight={onTextHeight} onEditing={onEditing} />
+                <ItemBody item={item} editing={editingId === item.id} marks={marks} onText={onText} onTextHeight={onTextHeight} onEditing={onEditing} />
+                {marks[0] && <span className="remote-sel-label" style={{ background: marks[0].color }}>{marks[0].name}</span>}
                 {selectedIds.length === 1 && selectedIds[0] === item.id && canResize(item.type) &&
                   (["nw", "ne", "sw", "se"] as const).map((corner) => (
                     <span

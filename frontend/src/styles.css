@@ -541,6 +541,44 @@ button:focus-visible {
   background-position: center;
   border-radius: 8px 8px 0 0;
 }
+.sticky-body { position: relative; flex: 1; min-height: 0; }
+.sticky-body textarea { position: relative; z-index: 1; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+.sel-mirror {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  margin: 0;
+  overflow: hidden;
+  pointer-events: none;
+  color: transparent;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.sticky-body .sel-mirror {
+  padding: 2px 12px 12px;
+  line-height: 1.35;
+  font-family: "Public Sans", "Segoe UI", sans-serif;
+}
+.sel-mirror mark, .plain-text mark {
+  color: transparent;
+  border-radius: 2px;
+}
+.plain-text mark { color: inherit; }
+.remote-sel-label {
+  position: absolute;
+  left: 0;
+  top: -22px;
+  z-index: 4;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  border-radius: 999px;
+  padding: 2px 8px;
+  pointer-events: none;
+  white-space: nowrap;
+}
 .sticky textarea, .plain-text {
   font-family: "Public Sans", "Segoe UI", sans-serif;
   border: 0;

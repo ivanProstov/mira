@@ -1,17 +1,18 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { fileUrl } from "../api";
-import type { BoardItem } from "../types";
+import type { BoardItem, TextMark } from "../types";
 import { MARKER_OPACITY, MARKER_WIDTH } from "./model";
 
 type Props = {
   item: BoardItem;
   editing: boolean;
+  marks: TextMark[];
   onText: (id: string, text: string) => void;
   onTextHeight: (id: string, height: number) => void;
   onEditing: (id: string, editing: boolean) => void;
 };
 
-export function ItemBody({ item, editing, onText, onTextHeight, onEditing }: Props) {
+export function ItemBody({ item, editing, marks, onText, onTextHeight, onEditing }: Props) {
   if (item.type === "image" && item.src) {
     return (
       <div className="item-image">
@@ -50,28 +51,40 @@ export function ItemBody({ item, editing, onText, onTextHeight, onEditing }: Pro
       </div>
     );
   }
-  if (item.type === "text") return <TextItem item={item} editing={editing} onText={onText} onTextHeight={onTextHeight} onEditing={onEditing} />;
-  return <Sticky item={item} editing={editing} onText={onText} onEditing={onEditing} />;
+  if (item.type === "text") return <TextItem item={item} editing={editing} marks={marks} onText={onText} onTextHeight={onTextHeight} onEditing={onEditing} />;
+  return <Sticky item={item} editing={editing} marks={marks} onText={onText} onEditing={onEditing} />;
 }
 
-function Sticky({ item, editing, onText, onEditing }: Omit<Props, "onTextHeight">) {
+function Sticky({ item, editing, marks, onText, onEditing }: Omit<Props, "onTextHeight">) {
+  const text = item.text || "";
   return (
     <div className="sticky" style={{ background: item.fill || "#fff3a8" }}>
       <div className="grip" aria-hidden="true" />
-      <textarea
-        value={item.text || ""}
-        aria-label="Текст заметки"
-        style={{ fontSize: item.fontSize || 16 }}
-        onChange={(event) => onText(item.id, event.target.value)}
-        onFocus={() => onEditing(item.id, true)}
-        onBlur={() => onEditing(item.id, false)}
-        autoFocus={editing}
-      />
+      <div className="sticky-body">
+        {marks.length > 0 && (
+          <div className="sel-mirror" style={{ fontSize: item.fontSize || 16 }} aria-hidden="true">
+            <Marked text={text} marks={marks} />
+          </div>
+        )}
+        <textarea
+          value={text}
+          aria-label="Текст заметки"
+          style={{ fontSize: item.fontSize || 16 }}
+          onChange={(event) => onText(item.id, event.target.value)}
+          onScroll={(event) => {
+            const mirror = event.currentTarget.previousElementSibling;
+            if (mirror instanceof HTMLElement) mirror.scrollTop = event.currentTarget.scrollTop;
+          }}
+          onFocus={() => onEditing(item.id, true)}
+          onBlur={() => onEditing(item.id, false)}
+          autoFocus={editing}
+        />
+      </div>
     </div>
   );
 }
 
-function TextItem({ item, editing, onText, onTextHeight, onEditing }: Props) {
+function TextItem({ item, editing, marks, onText, onTextHeight, onEditing }: Props) {
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   const sizerRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState(item.text || "");
@@ -103,6 +116,11 @@ function TextItem({ item, editing, onText, onTextHeight, onEditing }: Props) {
       <div ref={sizerRef} className="text-body text-sizer" style={style} aria-hidden="true">
         {measured}
       </div>
+      {editing && marks.length > 0 && (
+        <div className="sel-mirror text-body" style={style} aria-hidden="true">
+          <Marked text={draft} marks={marks} />
+        </div>
+      )}
       {editing ? (
         <textarea
           ref={fieldRef}
@@ -115,6 +133,12 @@ function TextItem({ item, editing, onText, onTextHeight, onEditing }: Props) {
             setDraft(event.target.value);
             onText(item.id, event.target.value);
           }}
+          onScroll={(event) => {
+            const mirror = event.currentTarget.previousElementSibling;
+            if (mirror instanceof HTMLElement && mirror.classList.contains("sel-mirror")) {
+              mirror.scrollTop = event.currentTarget.scrollTop;
+            }
+          }}
           onBlur={() => {
             if (performance.now() - openedAt.current < 400) {
               requestAnimationFrame(() => fieldRef.current?.focus());
@@ -125,8 +149,38 @@ function TextItem({ item, editing, onText, onTextHeight, onEditing }: Props) {
         />
       ) : (
         <div className={`plain-text text-body ${value ? "" : "muted"}`} style={style}>
-          {value || "Текст"}
+          {marks.length > 0 && value ? <Marked text={value} marks={marks} /> : value || "Текст"}
         </div>
+      )}
+    </>
+  );
+}
+
+function Marked({ text, marks }: { text: string; marks: TextMark[] }) {
+  const cuts = new Set<number>([0, text.length]);
+  for (const mark of marks) {
+    cuts.add(Math.max(0, Math.min(text.length, mark.start)));
+    cuts.add(Math.max(0, Math.min(text.length, mark.end)));
+  }
+  const points = [...cuts].sort((a, b) => a - b);
+  const parts = [];
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index];
+    const end = points[index + 1];
+    if (start === end) continue;
+    const active = marks.filter((mark) => mark.start < end && mark.end > start);
+    parts.push({ start, text: text.slice(start, end), color: active[0]?.color || "", title: active.map((mark) => mark.name).filter(Boolean).join(", ") });
+  }
+  return (
+    <>
+      {parts.map((part) =>
+        part.color ? (
+          <mark key={part.start} style={{ background: `${part.color}8c` }} title={part.title}>
+            {part.text}
+          </mark>
+        ) : (
+          <span key={part.start}>{part.text}</span>
+        ),
       )}
     </>
   );

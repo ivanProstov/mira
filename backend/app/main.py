@@ -28,7 +28,7 @@ from .security import (
     same_text,
     upsert_room_cookie,
 )
-from .store import Store, _inside
+from .store import ITEM_ID, Store, _inside
 
 log = logging.getLogger("mira")
 MAX_UPLOAD = 40 * 1024 * 1024
@@ -463,6 +463,39 @@ async def handle_message(current: AppState, room_id: str, peer: Peer, message: o
         await current.hub.broadcast(
             room_id,
             {"type": "viewport", "connId": peer.conn_id, **viewport},
+            skip=peer.conn_id,
+        )
+        return
+    if kind == "textsel":
+        item_id = message.get("itemId")
+        if item_id is None:
+            peer.text_sel = None
+            await current.hub.broadcast(
+                room_id,
+                {"type": "textsel", "connId": peer.conn_id, "itemId": None},
+                skip=peer.conn_id,
+            )
+            return
+        if not isinstance(item_id, str) or not ITEM_ID.fullmatch(item_id):
+            return
+        start = message.get("start")
+        end = message.get("end")
+        if isinstance(start, bool) or isinstance(end, bool) or not isinstance(start, int) or not isinstance(end, int):
+            return
+        if start < 0 or end <= start or end > 100_000:
+            return
+        peer.text_sel = {"itemId": item_id, "start": start, "end": end}
+        await current.hub.broadcast(
+            room_id,
+            {
+                "type": "textsel",
+                "connId": peer.conn_id,
+                "itemId": item_id,
+                "start": start,
+                "end": end,
+                "name": peer.name,
+                "color": peer.color,
+            },
             skip=peer.conn_id,
         )
         return

@@ -50,12 +50,22 @@ export type Op =
   | { type: "upsert_many"; items: BoardItem[] }
   | { type: "delete"; id: string };
 
+export type TextMark = {
+  connId: string;
+  itemId: string;
+  start: number;
+  end: number;
+  name: string;
+  color: string;
+};
+
 export type Peer = {
   connId: string;
   name: string;
   role: Role;
   color: string;
   viewport: View | null;
+  textSel?: { itemId: string; start: number; end: number } | null;
 };
 
 export type View = {

@@ -201,6 +201,15 @@ def test_board_sync_cursors_and_files(tutor: TestClient, student: TestClient):
             assert cursor["x"] == 120
             assert viewport["y"] == 15
 
+            student_ws.send_json({"type": "textsel", "itemId": "note123456", "start": 0, "end": 8})
+            selected = wait_for(tutor_ws, lambda packet: packet["type"] == "textsel" and packet.get("itemId") == "note123456")
+            assert selected["start"] == 0
+            assert selected["end"] == 8
+            assert selected["name"] == "Артём"
+            student_ws.send_json({"type": "textsel", "itemId": None})
+            cleared = wait_for(tutor_ws, lambda packet: packet["type"] == "textsel" and packet.get("itemId") is None)
+            assert cleared["connId"] == hello_student["you"]["connId"]
+
     version, items = get_state().store.board(room["id"])
     assert version == 1
     assert items[0]["text"] == "friendly — дружелюбный"

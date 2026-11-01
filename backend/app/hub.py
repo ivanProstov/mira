@@ -25,6 +25,7 @@ class Peer:
     socket: WebSocket
     viewport: dict | None = None
     cursor: dict | None = None
+    text_sel: dict | None = None
 
 
 @dataclass
@@ -57,6 +58,7 @@ class Hub:
                     "role": peer.role,
                     "color": peer.color,
                     "viewport": peer.viewport,
+                    "textSel": peer.text_sel,
                 }
             )
         people.sort(key=lambda item: (item["role"] != "tutor", item["name"].lower()))
