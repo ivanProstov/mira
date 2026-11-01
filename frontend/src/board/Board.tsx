@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent, PointerEvent as ReactPointerEvent } from "react";
-import { Link } from "react-router-dom";
 import { api } from "../api";
 import { Icon } from "../icons";
-import { Dialog } from "../ui";
+import { Avatar, Dialog, Wordmark } from "../ui";
 import type { BoardItem, Op, Peer, Room, UploadResult, View } from "../types";
 import { ItemBody } from "./ItemView";
 import { INK_COLORS, MARKER_OPACITY, MARKER_WIDTH, SHAPE_COLORS, STICKY_COLORS, bounds, canResize, clamp, makeBox, topZ } from "./model";
@@ -33,6 +32,16 @@ const TOOLS: { id: Tool; icon: "select" | "hand" | "sticky" | "text" | "frame" |
   { id: "pen", icon: "pen", label: "Карандаш", key: "P" },
   { id: "highlight", icon: "marker", label: "Маркер", key: "M" },
 ];
+
+function toolHint(tool: Tool): string {
+  if (tool === "sticky") return "Нажмите на доску — появится заметка";
+  if (tool === "text") return "Нажмите на доску — появится текст";
+  if (tool === "frame" || tool === "rect" || tool === "ellipse" || tool === "arrow") return "Нажмите или протяните по доске";
+  if (tool === "pen") return "Ведите карандашом по доске";
+  if (tool === "highlight") return "Закрасьте нужное место";
+  if (tool === "hand") return "Зажмите и тяните, чтобы двигать доску";
+  return "";
+}
 
 type Props = {
   room: Room;
@@ -685,10 +694,7 @@ export function Board({ room, role, displayName, onRename, onRoom }: Props) {
   return (
     <div className={`board-shell ${showPeople ? "show-people" : ""}`}>
       <header className="board-header">
-        <Link to="/app" className="wordmark">
-          <span className="mark">M</span>
-          <span>Mira</span>
-        </Link>
+        <Wordmark linked />
         <div className="room-heading">
           <strong>{room.name}</strong>
           {role === "tutor" && room.password && (
@@ -715,19 +721,21 @@ export function Board({ room, role, displayName, onRename, onRoom }: Props) {
             <i />
             {statusLabel}
           </span>
-          <button type="button" className="text-button" onClick={() => setShowPeople((value) => !value)}>
+          <button type="button" className={`btn ghost slim ${showPeople ? "on" : ""}`} onClick={() => setShowPeople((value) => !value)}>
             {peers.length + 1} на доске
           </button>
         </div>
       </header>
 
       <aside className="toolbar">
+        <div className="toolbar-rail">
         {TOOLS.map((entry) => (
           <button
             key={entry.id}
             type="button"
             className={`tool ${tool === entry.id ? "active" : ""}`}
             aria-pressed={tool === entry.id}
+            aria-label={`${entry.label}, клавиша ${entry.key}`}
             title={`${entry.label} (${entry.key})`}
             onClick={() => setTool(entry.id)}
           >
@@ -735,12 +743,14 @@ export function Board({ room, role, displayName, onRename, onRoom }: Props) {
           </button>
         ))}
         <div className="tool-gap" />
-        <button type="button" className="tool" title="Картинка" disabled={Boolean(busy)} onClick={() => pick("image/png,image/jpeg,image/gif,image/webp")}>
+        <button type="button" className="tool" title="Картинка" aria-label="Картинка" disabled={Boolean(busy)} onClick={() => pick("image/png,image/jpeg,image/gif,image/webp")}>
           <Icon name="image" />
         </button>
-        <button type="button" className="tool" title="PDF учебника" disabled={Boolean(busy)} onClick={() => pick("application/pdf")}>
+        <button type="button" className="tool" title="PDF учебника" aria-label="PDF учебника" disabled={Boolean(busy)} onClick={() => pick("application/pdf")}>
           <Icon name="pdf" />
         </button>
+        </div>
+        <p className="tool-now">{TOOLS.find((entry) => entry.id === tool)?.label}</p>
         <input
           ref={fileRef}
           type="file"
@@ -822,7 +832,8 @@ export function Board({ room, role, displayName, onRename, onRoom }: Props) {
               <svg viewBox="0 0 18 18" className="pointer">
                 <path d="M2 1.5l5.2 14 1.7-5.2 5.6-1.6L2 1.5z" fill={cursor.color} />
               </svg>
-              <span style={{ background: cursor.color }}>
+              <span className={cursor.role === "tutor" ? "with-avatar" : ""} style={{ background: cursor.color }}>
+                {cursor.role === "tutor" && <Avatar className="tiny" />}
                 {cursor.name}
                 {cursor.role === "tutor" ? " · репетитор" : ""}
               </span>
@@ -831,9 +842,12 @@ export function Board({ room, role, displayName, onRename, onRoom }: Props) {
         </div>
         {!items.length && !busy && (
           <div className="empty-board">
-            <strong>Доска пока пустая</strong>
-            <p>Перетащите PDF учебника или картинку. Заметки, маркер и стрелки увидят все в комнате.</p>
+            <strong>Здесь начнётся занятие</strong>
+            <p>Заметка, текст и маркер — на панели слева. Учебник можно просто перетащить на доску.</p>
           </div>
+        )}
+        {toolHint(tool) && !followed && (
+          <div className="place-hint">{toolHint(tool)}</div>
         )}
         {(selected || selectedIds.length > 1) && (
           <div
@@ -863,7 +877,7 @@ export function Board({ room, role, displayName, onRename, onRoom }: Props) {
                 <button type="button" onClick={() => changeFont(selected, 2, publish, remember)}>A+</button>
               </span>
             )}
-            <button type="button" className="text-button danger" onClick={() => removeSelected()}>
+            <button type="button" className="btn danger slim" onClick={() => removeSelected()}>
               Удалить
             </button>
           </div>
@@ -921,7 +935,7 @@ export function Board({ room, role, displayName, onRename, onRoom }: Props) {
           <input value={displayName} maxLength={40} onChange={(event) => onRename(event.target.value)} />
         </label>
         <div className="you-row">
-          <i style={{ background: you?.color || "#0f6b4c" }} />
+          {role === "tutor" ? <Avatar /> : <i style={{ background: you?.color || "#0f6b4c" }} />}
           <span>{displayName || "Вы"}</span>
           <em>{role === "tutor" ? "репетитор" : "это вы"}</em>
         </div>
@@ -958,7 +972,7 @@ export function Board({ room, role, displayName, onRename, onRoom }: Props) {
 function PeerRow({ peer, active, onFollow }: { peer: Peer; active: boolean; onFollow: () => void }) {
   return (
     <li>
-      <i style={{ background: peer.color }} />
+      {peer.role === "tutor" ? <Avatar /> : <i style={{ background: peer.color }} />}
       <span>
         {peer.name}
         {peer.role === "tutor" ? <em> репетитор</em> : null}

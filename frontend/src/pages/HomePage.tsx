@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { api, saveDisplayName } from "../api";
 import { useAuth } from "../auth";
 import type { Room } from "../types";
-import { Dialog, Wordmark } from "../ui";
+import { Avatar, Dialog, Wordmark } from "../ui";
 
 export function HomePage() {
   const { user, logout } = useAuth();
@@ -25,6 +25,7 @@ function TutorHome({ onLogout }: { onLogout: () => void }) {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Room | null>(null);
   const [removing, setRemoving] = useState<Room | null>(null);
+  const [copiedId, setCopiedId] = useState("");
 
   async function reload() {
     const data = await api.rooms();
@@ -37,10 +38,22 @@ function TutorHome({ onLogout }: { onLogout: () => void }) {
 
   return (
     <main className="home">
+      <div className="live-bg" aria-hidden="true">
+        <span className="float note" />
+        <span className="float cardlet" />
+        <span className="float chip" />
+        <span className="float orb" />
+      </div>
       <header className="topbar">
         <Wordmark />
         <div className="topbar-side">
-          <span className="role">Репетитор</span>
+          <span className="tutor-plate">
+            <Avatar />
+            <span>
+              <strong>Роман</strong>
+              <em>английский</em>
+            </span>
+          </span>
           <button type="button" className="btn ghost" onClick={onLogout}>
             Выйти
           </button>
@@ -49,25 +62,41 @@ function TutorHome({ onLogout }: { onLogout: () => void }) {
       <section className="home-body">
         <div className="section-head">
           <div>
-            <h1>Комнаты</h1>
-            <p>У каждой комнаты свой пароль. Ученик знает только свой и попадает только туда.</p>
+            <p className="kicker">Занятия с Романом</p>
+            <h1>Ваши комнаты</h1>
+            <p>У каждой комнаты свой пароль. Ученик знает только его и попадает только туда.</p>
           </div>
           <button type="button" className="btn primary" onClick={() => setCreating(true)}>
             Новая комната
           </button>
         </div>
         {error && <p className="form-error">{error}</p>}
-        {rooms.length === 0 && !error && <p className="empty-copy">Комнат ещё нет. Создайте первую и продиктуйте ученику пароль.</p>}
+        {rooms.length === 0 && !error && (
+          <button type="button" className="empty-room" onClick={() => setCreating(true)}>
+            <strong>Создайте первую комнату</strong>
+            <span>Придумайте название и пароль, который продиктуете ученику.</span>
+          </button>
+        )}
         <div className="room-grid">
-          {rooms.map((room) => (
-            <article key={room.id} className="room-card">
-              <h2>{room.name}</h2>
-              <p className="when">{formatWhen(room.createdAt)}</p>
+          {rooms.map((room, index) => (
+            <article key={room.id} className="room-card" style={{ animationDelay: `${Math.min(index, 8) * 70}ms` }}>
+              <button type="button" className="room-open" onClick={() => navigate(`/room/${room.id}`)}>
+                <h2>{room.name}</h2>
+                <p className="when">{formatWhen(room.createdAt)}</p>
+              </button>
               <div className="secret">
                 <span>Пароль</span>
                 <strong>{room.password}</strong>
-                <button type="button" onClick={() => void navigator.clipboard.writeText(room.password || "")}>
-                  Копировать
+                <button
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(room.password || "").then(() => {
+                      setCopiedId(room.id);
+                      window.setTimeout(() => setCopiedId((current) => (current === room.id ? "" : current)), 1400);
+                    });
+                  }}
+                >
+                  {copiedId === room.id ? "Скопирован" : "Копировать"}
                 </button>
               </div>
               <div className="card-actions">
@@ -117,7 +146,7 @@ function TutorHome({ onLogout }: { onLogout: () => void }) {
           <div className="card-actions">
             <button
               type="button"
-              className="btn danger"
+              className="btn danger fill"
               onClick={() => {
                 const id = removing.id;
                 void api.deleteRoom(id).then(() => {
@@ -170,8 +199,9 @@ function StudentHome({ notice, onLogout }: { notice: string; onLogout: () => voi
             Выйти
           </button>
         </div>
+        <p className="eyebrow">Ученик</p>
         <h1>Войти в комнату</h1>
-        <p className="lede">Имя увидят остальные рядом с вашим курсором. Пароль комнаты даёт репетитор.</p>
+        <p className="lede">Имя увидят рядом с курсором. Пароль комнаты говорит репетитор.</p>
         <label>
           Как вас зовут
           <input value={name} onChange={(event) => setName(event.target.value)} maxLength={40} autoFocus required />

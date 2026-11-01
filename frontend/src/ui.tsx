@@ -1,13 +1,30 @@
 import type { ReactNode } from "react";
 import { useEffect } from "react";
+import { Link } from "react-router-dom";
+import roman from "./assets/roman.jpg";
 
-export function Wordmark() {
-  return (
-    <span className="wordmark">
+export function Avatar({ className = "" }: { className?: string }) {
+  return <img className={`avatar ${className}`.trim()} src={roman} alt="" />;
+}
+
+export function Wordmark({ linked = false }: { linked?: boolean }) {
+  const body = (
+    <>
       <span className="mark">M</span>
-      Mira
-    </span>
+      <span className="wordmark-copy">
+        Mira
+        <small>доска Романа</small>
+      </span>
+    </>
   );
+  if (linked) {
+    return (
+      <Link to="/app" className="wordmark">
+        {body}
+      </Link>
+    );
+  }
+  return <span className="wordmark">{body}</span>;
 }
 
 export function Dialog({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {

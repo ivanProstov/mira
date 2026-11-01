@@ -31,8 +31,9 @@ export function LoginPage() {
     <main className="gate">
       <form className="card" onSubmit={(event) => void submit(event)}>
         <Wordmark />
-        <h1>Доска для занятий</h1>
-        <p className="lede">Репетитор и ученики входят разными логинами. Их задают при запуске сервера.</p>
+        <p className="eyebrow">Доска Романа</p>
+        <h1>Английский, живьём</h1>
+        <p className="lede">Роман открывает комнаты. Ученик заходит в ту, пароль от которой ему дали.</p>
         <label>
           Логин
           <input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" autoFocus required />
