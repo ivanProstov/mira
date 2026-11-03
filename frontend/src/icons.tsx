@@ -17,7 +17,9 @@ type IconName =
   | "eye"
   | "plus"
   | "minus"
-  | "fit";
+  | "fit"
+  | "undo"
+  | "redo";
 
 export function Icon({ name }: { name: IconName }) {
   return (
@@ -69,4 +71,16 @@ const paths: Record<IconName, ReactNode> = {
   plus: <path {...stroke} d="M12 6v12M6 12h12" />,
   minus: <path {...stroke} d="M6 12h12" />,
   fit: <path {...stroke} d="M8 5.5H5.5V8M16 5.5h2.5V8M8 18.5H5.5V16M16 18.5h2.5V16" />,
+  undo: (
+    <>
+      <path {...stroke} d="M8.2 7.2H4.6V3.6" />
+      <path {...stroke} d="M5.1 7.4a6.4 6.4 0 1 1-1.1 4.2" />
+    </>
+  ),
+  redo: (
+    <>
+      <path {...stroke} d="M15.8 7.2h3.6V3.6" />
+      <path {...stroke} d="M18.9 7.4a6.4 6.4 0 1 0 1.1 4.2" />
+    </>
+  ),
 };

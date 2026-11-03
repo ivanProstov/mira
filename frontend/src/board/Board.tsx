@@ -33,6 +33,28 @@ const TOOLS: { id: Tool; icon: "select" | "hand" | "sticky" | "text" | "frame" |
   { id: "highlight", icon: "marker", label: "Маркер", key: "M" },
 ];
 
+function invertOps(ops: Op[], items: BoardItem[]): Op[] {
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const restored = new Map<string, BoardItem>();
+  const removed: string[] = [];
+  const consider = (id: string, creating: boolean) => {
+    const previous = byId.get(id);
+    if (previous) restored.set(id, previous);
+    else if (creating && !removed.includes(id)) removed.push(id);
+  };
+  for (const op of ops) {
+    if (op.type === "delete") consider(op.id, false);
+    else if (op.type === "upsert") consider(op.item.id, true);
+    else for (const item of op.items) consider(item.id, true);
+  }
+  const inverse: Op[] = [];
+  const prior = [...restored.values()];
+  if (prior.length === 1) inverse.push({ type: "upsert", item: prior[0] });
+  else if (prior.length > 1) inverse.push({ type: "upsert_many", items: prior });
+  for (const id of removed) inverse.push({ type: "delete", id });
+  return inverse;
+}
+
 function toolHint(tool: Tool): string {
   if (tool === "sticky") return "Нажмите на доску — появится заметка";
   if (tool === "text") return "Нажмите на доску — появится текст";
@@ -78,6 +100,11 @@ export function Board({ room, role, displayName, onRename, onRoom }: Props) {
   const spaceRef = useRef(false);
   const gesture = useRef<Gesture | null>(null);
   const history = useRef<Op[][]>([]);
+  const future = useRef<Op[][]>([]);
+  const textChunk = useRef<{ id: string; before: BoardItem; timer: number } | null>(null);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const [textEpoch, setTextEpoch] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const inside = useRef(false);
   const moveRef = useRef<(event: PointerEvent) => void>(() => {});
@@ -125,18 +152,80 @@ export function Board({ room, role, displayName, onRename, onRoom }: Props) {
     };
   }, []);
 
+  const syncHistory = useCallback(() => {
+    const nextUndo = history.current.length > 0;
+    const nextRedo = future.current.length > 0;
+    setCanUndo((current) => (current === nextUndo ? current : nextUndo));
+    setCanRedo((current) => (current === nextRedo ? current : nextRedo));
+  }, []);
+
+  const sealTextChunk = useCallback(() => {
+    const chunk = textChunk.current;
+    if (!chunk) return;
+    window.clearTimeout(chunk.timer);
+    textChunk.current = null;
+    const current = itemsRef.current.find((entry) => entry.id === chunk.id);
+    if (!current || (current.text || "") === (chunk.before.text || "")) return;
+    history.current.push([{ type: "upsert", item: chunk.before }]);
+    if (history.current.length > 80) history.current.splice(0, history.current.length - 80);
+    syncHistory();
+  }, [itemsRef, syncHistory]);
+
   const remember = useCallback((batch: Op[]) => {
+    sealTextChunk();
     history.current.push(batch);
     if (history.current.length > 80) history.current.splice(0, history.current.length - 80);
-  }, []);
+    future.current = [];
+    syncHistory();
+  }, [sealTextChunk, syncHistory]);
+
+  const applyBatch = useCallback(
+    (batch: Op[]) => {
+      for (const op of batch) publish(op);
+    },
+    [publish],
+  );
+
+  const undo = useCallback(() => {
+    sealTextChunk();
+    const batch = history.current.pop();
+    if (!batch) return;
+    const redoBatch = invertOps(batch, itemsRef.current);
+    if (redoBatch.length) future.current.push(redoBatch);
+    applyBatch(batch);
+    setTextEpoch((value) => value + 1);
+    syncHistory();
+  }, [applyBatch, itemsRef, sealTextChunk, syncHistory]);
+
+  const redo = useCallback(() => {
+    sealTextChunk();
+    const batch = future.current.pop();
+    if (!batch) return;
+    const undoBatch = invertOps(batch, itemsRef.current);
+    if (undoBatch.length) history.current.push(undoBatch);
+    applyBatch(batch);
+    setTextEpoch((value) => value + 1);
+    syncHistory();
+  }, [applyBatch, itemsRef, sealTextChunk, syncHistory]);
 
   const onText = useCallback(
     (id: string, text: string) => {
       const item = itemsRef.current.find((entry) => entry.id === id);
-      if (!item || item.text === text) return;
+      if (!item || (item.text || "") === text) return;
+      const open = textChunk.current;
+      if (!open || open.id !== id) {
+        sealTextChunk();
+        textChunk.current = { id, before: { ...item }, timer: 0 };
+        future.current = [];
+        syncHistory();
+      } else {
+        window.clearTimeout(open.timer);
+      }
+      const chunk = textChunk.current;
+      if (chunk) chunk.timer = window.setTimeout(() => sealTextChunk(), 700);
       publishThrottled({ type: "upsert", item: { ...item, text } });
     },
-    [itemsRef, publishThrottled],
+    [itemsRef, publishThrottled, sealTextChunk, syncHistory],
   );
 
   const onTextHeight = useCallback(
@@ -149,8 +238,9 @@ export function Board({ room, role, displayName, onRename, onRoom }: Props) {
   );
 
   const onEditing = useCallback((id: string, next: boolean) => {
+    if (!next) sealTextChunk();
     setEditingId((current) => (next ? id : current === id ? null : current));
-  }, []);
+  }, [sealTextChunk]);
 
   const removeSelected = useCallback(() => {
     const found = selectedRef.current.flatMap((id) => {
@@ -258,6 +348,11 @@ export function Board({ room, role, displayName, onRename, onRoom }: Props) {
     if (status === "live") sendViewport(viewRef.current);
   }, [sendViewport, status]);
 
+  useEffect(() => () => {
+    const chunk = textChunk.current;
+    if (chunk) window.clearTimeout(chunk.timer);
+  }, []);
+
   useEffect(() => {
     if (!following) return;
     const peer = peers.find((item) => item.connId === following);
@@ -273,18 +368,24 @@ export function Board({ room, role, displayName, onRename, onRoom }: Props) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target?.closest("textarea, input")) return;
+      const typing = Boolean(target?.closest("textarea, input"));
+      const meta = event.metaKey || event.ctrlKey;
+      const key = event.key.toLowerCase();
+      if (meta && key === "z" && !event.shiftKey) {
+        event.preventDefault();
+        undo();
+        return;
+      }
+      if (meta && ((key === "z" && event.shiftKey) || key === "y")) {
+        event.preventDefault();
+        redo();
+        return;
+      }
+      if (typing) return;
       if (event.code === "Space") {
         event.preventDefault();
         spaceRef.current = true;
         setSpace(true);
-        return;
-      }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z" && !event.shiftKey) {
-        event.preventDefault();
-        const batch = history.current.pop();
-        if (!batch) return;
-        for (const op of batch) publish(op);
         return;
       }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "d") {
@@ -347,7 +448,7 @@ export function Board({ room, role, displayName, onRename, onRoom }: Props) {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [itemsRef, publish, remember, removeSelected]);
+  }, [itemsRef, publish, redo, remember, removeSelected, undo]);
 
   useEffect(() => {
     const onPaste = (event: ClipboardEvent) => {
@@ -751,6 +852,13 @@ export function Board({ room, role, displayName, onRename, onRoom }: Props) {
 
       <aside className="toolbar">
         <div className="toolbar-rail">
+        <button type="button" className="tool" title="Отменить (⌘Z)" aria-label="Отменить последнее действие" disabled={!canUndo} onClick={undo}>
+          <Icon name="undo" />
+        </button>
+        <button type="button" className="tool" title="Вернуть (⌘⇧Z)" aria-label="Вернуть отменённое действие" disabled={!canRedo} onClick={redo}>
+          <Icon name="redo" />
+        </button>
+        <div className="tool-gap" />
         {TOOLS.map((entry) => (
           <button
             key={entry.id}
@@ -835,7 +943,7 @@ export function Board({ room, role, displayName, onRename, onRoom }: Props) {
                 className={`item ${selectedIds.includes(item.id) ? "selected" : ""} item-${item.type}`}
                 style={{ transform: `translate(${box.x}px, ${box.y}px)`, width: box.w, height: box.h, zIndex: item.z }}
               >
-                <ItemBody item={item} editing={editingId === item.id} marks={marks} onText={onText} onTextHeight={onTextHeight} onEditing={onEditing} />
+                <ItemBody item={item} editing={editingId === item.id} marks={marks} textEpoch={textEpoch} onText={onText} onTextHeight={onTextHeight} onEditing={onEditing} />
                 {marks[0] && <span className="remote-sel-label" style={{ background: marks[0].color }}>{marks[0].name}</span>}
                 {selectedIds.length === 1 && selectedIds[0] === item.id && canResize(item.type) &&
                   (["nw", "ne", "sw", "se"] as const).map((corner) => (

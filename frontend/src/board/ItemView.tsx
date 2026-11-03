@@ -7,12 +7,13 @@ type Props = {
   item: BoardItem;
   editing: boolean;
   marks: TextMark[];
+  textEpoch: number;
   onText: (id: string, text: string) => void;
   onTextHeight: (id: string, height: number) => void;
   onEditing: (id: string, editing: boolean) => void;
 };
 
-export function ItemBody({ item, editing, marks, onText, onTextHeight, onEditing }: Props) {
+export function ItemBody({ item, editing, marks, textEpoch, onText, onTextHeight, onEditing }: Props) {
   if (item.type === "image" && item.src) {
     return (
       <div className="item-image">
@@ -51,11 +52,11 @@ export function ItemBody({ item, editing, marks, onText, onTextHeight, onEditing
       </div>
     );
   }
-  if (item.type === "text") return <TextItem item={item} editing={editing} marks={marks} onText={onText} onTextHeight={onTextHeight} onEditing={onEditing} />;
+  if (item.type === "text") return <TextItem item={item} editing={editing} marks={marks} textEpoch={textEpoch} onText={onText} onTextHeight={onTextHeight} onEditing={onEditing} />;
   return <Sticky item={item} editing={editing} marks={marks} onText={onText} onEditing={onEditing} />;
 }
 
-function Sticky({ item, editing, marks, onText, onEditing }: Omit<Props, "onTextHeight">) {
+function Sticky({ item, editing, marks, onText, onEditing }: Omit<Props, "onTextHeight" | "textEpoch">) {
   const text = item.text || "";
   return (
     <div className="sticky" style={{ background: item.fill || "#fff3a8" }}>
@@ -84,10 +85,12 @@ function Sticky({ item, editing, marks, onText, onEditing }: Omit<Props, "onText
   );
 }
 
-function TextItem({ item, editing, marks, onText, onTextHeight, onEditing }: Props) {
+function TextItem({ item, editing, marks, textEpoch, onText, onTextHeight, onEditing }: Props) {
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   const sizerRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef(item.text || "");
   const [draft, setDraft] = useState(item.text || "");
+  textRef.current = item.text || "";
   const openedAt = useRef(0);
   const value = editing ? draft : item.text || "";
   const measured = value ? (value.endsWith("\n") ? `${value}\u200b` : value) : "Текст";
@@ -95,6 +98,10 @@ function TextItem({ item, editing, marks, onText, onTextHeight, onEditing }: Pro
   useEffect(() => {
     if (!editing) setDraft(item.text || "");
   }, [editing, item.text]);
+
+  useEffect(() => {
+    setDraft(textRef.current);
+  }, [textEpoch]);
 
   useEffect(() => {
     if (!editing) return;
